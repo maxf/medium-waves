@@ -1,0 +1,83 @@
+<!DOCTYPE HTML>
+<html>
+    <head>
+        <title>A few notes on Docker</title>
+    </head>
+    <link rel="stylesheet" href="../css/main.css" type="text/css"/>
+    <body>
+        <h1>A few notes on Docker</h1>
+
+        <p>I've spend a few days looking at <a href="http://www.docker.com">Docker</a> and trying to 'dockerize' a Django application. It's not been easy, so I thought I'd publish some notes for people who may run into the same problems.</p>
+
+        <p>In short, I don't think that for a simple web app, Docker is worth using. However it's definitely good for complex apps that have many components, or to deploy multiple instances of an app on a single host (eg, all the instances of wordpress running on <a href="http://www.wordpress.com">wordpress.com</a>). Moreover, some of Docker's idiosyncracies make it hard to start using it quickly, and I hope the hints below will help.</p>
+
+        <h2>Architecture</h2>
+
+        <img src="img/django-without-docker.png" width="600px" alt="Django without docker"/>
+
+        <p>A real production app would be more complex: the database should probably run in a different VM (or on <a href="http://aws.amazon.com/rds/">RDS</a>), and static files would go to a CDN, or on <a href="http://aws.amazon.com/s3/">S3</a>. Which, in fact, reduces even more Docker's usefulness here as you'd end up with docker running only your django app in a single container.</p>
+        
+        <p>when dockerized:</p>
+
+        <img src="img/django-with-docker.png" width="600px" alt="Django with docker"/>
+
+        <p>Using Docker indeed makes things a bit more complicated, especially as:</p>
+        <ul>
+            <li>You should not expect (like I did) that most of the components will be running in the docker runtime. As shown in the figure above, only a part of it is in docker. There's still a lot that needs to be installed outside of it.</li>
+            <li>The Postgresql container is installed in a single line:
+                <pre>docker run --name database -e POSTGRES_PASSWORD=foobad -d postgres</pre>
+                But to be fair, the same could be done with five lines in a shell script.
+            </li>
+            <li>The app itself could also be put on the docker hub, but it doesn't make much sense for a single instance of it. Clearly if the app is going to have multiple instances (for load balancing for instance) Docker makes deployment simpler (but not that much simpler over traditional methods).</li>
+        </ul>
+
+        <h2>Installing the app</h2>
+
+        <p>A copy of <a href="https://raw.githubusercontent.com/maxf/historique/master/install.sh">The install.sh script</a> is copied on the virtual host and run as root. When it's finished running, everything is ready and running. What the script does:</p>
+
+        <ol>
+            <li>Installs nginx, git and docker</li>
+            <li>Downloads and runs the postgres docker container</li>
+            <li>Downloads the application repository from github</li>
+            <li>Builds a container for the application</li>
+            <li>Runs the <a href="https://raw.githubusercontent.com/maxf/historique/master/docker-run.sh">application's setup script</a> in that container. The script:
+                <ol>
+                    <li>Sets up the postgres database for the django app</li>
+                    <li>Sets up the application's admin user</li>
+                    <li>Generates all the static assets (CSS, Javascript, image files) from the application source</li>
+                </ol>
+                <li>Copies back the static assets outside of the container in order to serve them directly from nginx.</li>
+            </li>
+        </ol>
+
+        <h2>Tips and tricks</h2>
+
+        <p>The main point of this post is to provide help if you want to use Docker. So here are some tips.</p>
+
+        <ul>
+            <li>Ubuntu's dockerio package is old. You need to <a href="https://docs.docker.com/installation/ubuntulinux/">get lxc-docker</a> from the docker apt repo.</li>
+            <li>Docker has irritating bugs and some annoyances:
+                <ul>
+                    <li>Some containers break when using exec, requiring removing images, containers and a few /var/log/ files (<a href="https://github.com/docker/docker/issues/9699">fixed soon, it seems</a>)</li>
+                    <li>Dangling images remain that need to be removed by hand (<code>docker images --filter "dangling=true" -q | xargs docker rmi</code>) lest they fill out your disk.</li>
+                </ul>
+                <li>The ubuntu base image is not using bash properly. You need add to your Dockerfile:
+                    <pre>RUN rm /bin/sh && ln -s /bin/bash /bin/sh</pre>
+                </li>
+                <li>The command-line arguments are not intuitive, and a lot of reading is required to get them right. For instance, if you call <code>docker run -t</code> in order to allocate a terminal to see what's going on, it'll hang at the next to last command, or when an interactive command is reached. Using <code>-i</code> solves that. Why isn't <code>-i</code> the default is odd.</li>
+            <li>Because containers run in their own tiny VMs (called images), you're faced with the tedium of having to look inside them to find out what's going on (that's not intrinsic to docker, of course. You'll meet the same issue with vagrant). Familiarity with Docker's <code>exec</code> and <code>logs</code> commands is required.</li>
+
+            <li>Don't forget to pass the port binding to gunicorn/wsgi inside your container. This caused me a lot of frustration:
+                <pre>gunicorn -b 0.0.0.0:8000 app.wsgi</pre>
+            </li>
+            <li>Some commands to set up a django app (installing static apps and creating an admin user) are interactive by default. The <code>--noinput</code> flag is needed, which has the unfortunate consequence that setting the admin password needs to be done in a <a href="https://raw.githubusercontent.com/maxf/historique/master/change-admin-password.py">separate script</a>, used as:
+                <pre>./manage.py createsuperuser --noinput --username=admin --email=a@b.com
+python ./change-admin-password ${ADMIN_PASSWORD}
+./manage.py collectstatic --noinput</pre>
+            </li>
+            <li>Copying the static assets into the container and then copying them back out could be avoided, if a script is written to replicate Django's <code>collectstatic</code> command.</li>
+        </ul>
+
+        <p>And that's all I can recall from a frustrating but informative week.</p>
+    </body>
+</html>
