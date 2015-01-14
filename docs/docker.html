@@ -2,8 +2,8 @@
 <html>
     <head>
         <title>A few notes on Docker</title>
+        <link rel="stylesheet" href="../css/main.css" type="text/css"/>
     </head>
-    <link rel="stylesheet" href="../css/main.css" type="text/css"/>
     <body>
         <h1>A few notes on Docker</h1>
 
@@ -16,7 +16,7 @@
         <img src="img/django-without-docker.png" width="600px" alt="Django without docker"/>
 
         <p>A real production app would be more complex: the database should probably run in a different VM (or on <a href="http://aws.amazon.com/rds/">RDS</a>), and static files would go to a CDN, or on <a href="http://aws.amazon.com/s3/">S3</a>. Which, in fact, reduces even more Docker's usefulness here as you'd end up with docker running only your django app in a single container.</p>
-        
+
         <p>when dockerized:</p>
 
         <img src="img/django-with-docker.png" width="600px" alt="Django with docker"/>
